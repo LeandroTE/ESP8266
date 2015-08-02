@@ -1,2 +1,9 @@
 /workspace_Projetos_Exemplo/RemoteSystemsTempFiles
 /workspace_Projetos_Exemplo/.metadata
+*.o
+*.bin
+*.out
+*.a
+*.cproject
+*.project
+*.bat
