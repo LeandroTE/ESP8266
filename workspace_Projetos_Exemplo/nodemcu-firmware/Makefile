@@ -17,7 +17,7 @@ FIRMWAREDIR = ..//bin//
 SDK_TOOLS	?= c:/Espressif/utils
 ESPTOOL		?= $(SDK_TOOLS)/esptool.exe
 ESPTOOL-CK	?= $(SDK_TOOLS)/esptool-ck.exe
-ESPPORT		?= COM2
+ESPPORT		?= COM8
 ESPBAUD		?= 115200
 
 # SPI_SPEED = 20MHz, 26.7MHz, 40MHz, 80MHz
