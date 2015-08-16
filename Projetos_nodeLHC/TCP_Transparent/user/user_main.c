@@ -30,6 +30,7 @@
 
 os_event_t		recvTaskQueue[recvTaskQueueLen];
 extern  serverConnData connData[MAX_CONN];
+struct rst_info * reset_info;
 
 #define WIFI_CLIENTSSID		"God Save The Queen"
 #define WIFI_CLIENTPASSWORD	"@cessorestrito"
@@ -79,6 +80,9 @@ void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
 {
 	char IP[15];
 	char IP_temp[3];
+
+	system_soft_wdt_feed();
+
 	os_timer_disarm(&WiFiLinker);
 	switch(wifi_station_get_connect_status())
 	{
@@ -88,7 +92,8 @@ void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
 		if(ipConfig.ip.addr != 0 && connState !=WIFI_CONNECTED) {
 			connState = WIFI_CONNECTED;
 			serverInit(23);
-			ets_uart_printf("%d.%d.%d.%d\n",p[0],p[1],p[2],p[3]);
+			ets_uart_printf("%d.%d.%d.%d",p[0],p[1],p[2],p[3]);
+			uart0_sendStr("\r");
 			//snprintf(IP,15, "%d.",14);
 			itoa(p[0],IP_temp);
 			IP[0]=IP_temp[0];
@@ -113,20 +118,24 @@ void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
 		break;
 	case STATION_WRONG_PASSWORD:
 		connState = WIFI_CONNECTING_ERROR;
-		ets_uart_printf("WiFi connecting error, wrong password\n");
+		ets_uart_printf("WiFi connecting error, wrong password");
+		uart0_sendStr("\r");
 		break;
 	case STATION_NO_AP_FOUND:
 		connState = WIFI_CONNECTING_ERROR;
-		ets_uart_printf("WiFi connecting error, ap not found\n");
+		ets_uart_printf("WiFi connecting error, ap not found");
+		uart0_sendStr("\r");
 		break;
 	case STATION_CONNECT_FAIL:
 		connState = WIFI_CONNECTING_ERROR;
-		ets_uart_printf("WiFi connecting fail\n");
+		ets_uart_printf("WiFi connecting fail");
+		uart0_sendStr("\r");
 
 		break;
 	default:
 		connState = WIFI_CONNECTING;
-		ets_uart_printf("WiFi connecting...\n");
+		ets_uart_printf("WiFi connecting...");
+		uart0_sendStr("\r");
 		stringDraw(3, 1, "WiFi connecting");
 	}
 	os_timer_setfn(&WiFiLinker, (os_timer_func_t *)wifi_check_ip, NULL);
@@ -142,7 +151,8 @@ LOCAL void ICACHE_FLASH_ATTR setup_wifi_st_mode(void)
 	wifi_station_dhcpc_stop();
 	if(wifi_station_get_config(&stconfig))
 	{
-		ets_uart_printf("SSID: %s\n",stconfig.ssid);
+		ets_uart_printf("SSID: %s",stconfig.ssid);
+		uart0_sendStr("\r");
 		stringDraw(2, 1, (char*)stconfig.ssid);
 		os_memset(stconfig.ssid, 0, sizeof(stconfig.ssid));
 		//ets_uart_printf("Password: %s\n",stconfig.password);
@@ -151,13 +161,15 @@ LOCAL void ICACHE_FLASH_ATTR setup_wifi_st_mode(void)
 		os_sprintf(stconfig.password, "%s", WIFI_CLIENTPASSWORD);
 		if(!wifi_station_set_config(&stconfig))
 		{
-			ets_uart_printf("ESP8266 not set station config!\n");
+			ets_uart_printf("ESP8266 not set station config!");
+			uart0_sendStr("\r");
 		}
 	}
 	wifi_station_connect();
 	wifi_station_dhcpc_start();
 	wifi_station_set_auto_connect(1);
-	ets_uart_printf("ESP8266 in STA mode configured.\n");
+	ets_uart_printf("ESP8266 in STA mode configured.");
+	uart0_sendStr("\r");
 }
 
 static void ICACHE_FLASH_ATTR recvTask(os_event_t *events)
@@ -192,19 +204,18 @@ extern UartDevice    UartDev;
 
 void user_rf_pre_init(void)
 {
-
+	reset_info = system_get_rst_info();
 }
 
 void user_init(void)
 {
-
 	uint8_t i;
 	//wifi_set_opmode(3); //STA+AP
 
 	UartDev.data_bits = EIGHT_BITS;
 	UartDev.parity = NONE_BITS;
 	UartDev.stop_bits = ONE_STOP_BIT;
-	uart_init(BIT_RATE_9600, BIT_RATE_9600);
+	uart_init(BIT_RATE_115200, BIT_RATE_9600);
 
 
 	i2c_init();
@@ -213,13 +224,20 @@ void user_init(void)
 	stringDraw(1, 1, "SDK ver:");
 	stringDraw(1, 48, (char*)system_get_sdk_version());
 
-	ets_uart_printf("Booting...\r");
-	ets_uart_printf("SDK version:%s\r", system_get_sdk_version());
+	uart0_sendStr("\r");
+	uart0_sendStr("\r");
+	ets_uart_printf("reset reason: %d", reset_info->reason);
+	uart0_sendStr("\r");
+	ets_uart_printf("Booting...");
+	uart0_sendStr("\r");
+	ets_uart_printf("SDK version:%s", system_get_sdk_version());
+	uart0_sendStr("\r");
+	uart0_sendStr("\r");
 
-	ets_uart_printf("wifi_get_opmode\n");
 	if(wifi_get_opmode() != STATION_MODE)
 	{
-		ets_uart_printf("ESP8266 is %s mode, restarting in %s mode...\r", WiFiMode[wifi_get_opmode()], WiFiMode[STATION_MODE]);
+		ets_uart_printf("ESP8266 is %s mode, restarting in %s mode...", WiFiMode[wifi_get_opmode()], WiFiMode[STATION_MODE]);
+		uart0_sendStr("\r");
 		setup_wifi_st_mode();
 	}
 	setup_wifi_st_mode();
@@ -227,7 +245,7 @@ void user_init(void)
 		wifi_set_phy_mode(PHY_MODE_11N);
 	if(wifi_station_get_auto_connect() == 0)
 		wifi_station_set_auto_connect(1);
-	ets_uart_printf("wifi_get_opmode_ok\n");
+
 
 
 #ifdef CONFIG_DYNAMIC
@@ -241,8 +259,9 @@ void user_init(void)
 #else
 
 #endif
-	ets_uart_printf("size flash_param_t %d\n", sizeof(flash_param_t));
-
+	ets_uart_printf("size flash_param_t %d", sizeof(flash_param_t));
+	uart0_sendStr("\r");
+	uart0_sendStr("\r");
 
 #ifdef CONFIG_STATIC
 	// refresh wifi config
@@ -261,14 +280,15 @@ void user_init(void)
 
 
 
-//	os_timer_disarm(&timer_1);
-//	os_timer_setfn(&timer_1, (os_timer_func_t *)timer_1_int, NULL);
-//	os_timer_arm(&timer_1, 1000, 1);
+	//	os_timer_disarm(&timer_1);
+	//	os_timer_setfn(&timer_1, (os_timer_func_t *)timer_1_int, NULL);
+	//	os_timer_arm(&timer_1, 1000, 1);
 
 	// Wait for Wi-Fi connection
 	os_timer_disarm(&WiFiLinker);
 	os_timer_setfn(&WiFiLinker, (os_timer_func_t *)wifi_check_ip, NULL);
 	os_timer_arm(&WiFiLinker, 1000, 0);
+
 
 
 
