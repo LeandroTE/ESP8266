@@ -37,8 +37,8 @@ static sint8  ICACHE_FLASH_ATTR sendtxbuffer(serverConnData *conn) {
 		conn->readytosend = false;
 		result= espconn_sent(conn->conn, (uint8_t*)conn->txbuffer, conn->txbufferlen);
 		conn->txbufferlen = 0;	
-		//if (result != ESPCONN_OK)
-			//ets_uart_printf("sendtxbuffer: espconn_sent error %d on conn %p\n", result, conn);
+		if (result != ESPCONN_OK)
+			ets_uart_printf("sendtxbuffer: espconn_sent error %d on conn %p\n", result, conn);
 	}
 	return result;
 }
@@ -52,7 +52,7 @@ sint8 ICACHE_FLASH_ATTR  espbuffsentprintf(serverConnData *conn, const char *for
 	len = ets_vsnprintf(conn->txbuffer + conn->txbufferlen, MAX_TXBUFFER - conn->txbufferlen - 1, format, al);
 	va_end(al);
 	if (len <0)  {
-		//ets_uart_printf("espbuffsentprintf: txbuffer full on conn %p\n", conn);
+		ets_uart_printf("espbuffsentprintf: txbuffer full on conn %p\n", conn);
 		return len;
 	}
 	conn->txbufferlen += len;
@@ -73,7 +73,7 @@ sint8 ICACHE_FLASH_ATTR espbuffsentstring(serverConnData *conn, const char *data
 //Returns ESPCONN_OK (0) for success, -128 if buffer is full or error from  espconn_sent
 sint8 ICACHE_FLASH_ATTR espbuffsent(serverConnData *conn, const char *data, uint16 len) {
 	if (conn->txbufferlen + len > MAX_TXBUFFER) {
-		//ets_uart_printf("espbuffsent: txbuffer full on conn %p\n", conn);
+		ets_uart_printf("espbuffsent: txbuffer full on conn %p\n", conn);
 		return -128;
 	}
 	os_memcpy(conn->txbuffer + conn->txbufferlen, data, len);
@@ -86,7 +86,7 @@ sint8 ICACHE_FLASH_ATTR espbuffsent(serverConnData *conn, const char *data, uint
 //callback after the data are sent
 static void ICACHE_FLASH_ATTR serverSentCb(void *arg) {
 	serverConnData *conn = serverFindConnData(arg);
-	//ets_uart_printf("Sent callback on conn %p\n", conn);
+	ets_uart_printf("Sent callback on conn %p\n", conn);
 	if (conn==NULL) return;
 	conn->readytosend = true;
 	sendtxbuffer(conn); // send possible new data in txbuffer
@@ -96,7 +96,7 @@ static void ICACHE_FLASH_ATTR serverRecvCb(void *arg, char *data, unsigned short
 	int x;
 	char *p, *e;
 	serverConnData *conn = serverFindConnData(arg);
-	//ets_uart_printf("Receive callback on conn %p\n", conn);
+	ets_uart_printf("Receive callback on conn %p\n", conn);
 	if (conn == NULL) return;
 
 
@@ -117,6 +117,7 @@ static void ICACHE_FLASH_ATTR serverReconCb(void *arg, sint8 err) {
 static void ICACHE_FLASH_ATTR serverDisconCb(void *arg) {
 	//Just look at all the sockets and kill the slot if needed.
 	int i;
+	ets_uart_printf("Disconnectado TCP");
 	for (i=0; i<MAX_CONN; i++) {
 		if (connData[i].conn!=NULL) {
 			if (connData[i].conn->state==ESPCONN_NONE || connData[i].conn->state==ESPCONN_CLOSE) {
@@ -129,12 +130,10 @@ static void ICACHE_FLASH_ATTR serverDisconCb(void *arg) {
 static void ICACHE_FLASH_ATTR serverConnectCb(void *arg) {
 	struct espconn *conn = arg;
 	int i;
-	//Find empty conndata in pool
+	ets_uart_printf("Connectado TCP");
 	for (i=0; i<MAX_CONN; i++) if (connData[i].conn==NULL) break;
-	//ets_uart_printf("Con req, conn=%p, pool slot %d\n", conn, i);
 
 	if (i==MAX_CONN) {
-		//ets_uart_printf("Aiee, conn pool overflow!\n");
 		espconn_disconnect(conn);
 		return;
 	}

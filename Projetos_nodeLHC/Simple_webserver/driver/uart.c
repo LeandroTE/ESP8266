@@ -152,7 +152,14 @@ uart0_tx_buffer(uint8 *buf, uint16 len)
 uint8_t charprob=0;
   for (i = 0; i < len; i++)
   {
-	  uart_tx_one_char(UART0, buf[i]);
+	  if(buf[i]!=0xff){
+		    uart_tx_one_char(UART0, buf[i]);
+	  }else if(buf[i]==0xff && charprob==0){
+		  uart_tx_one_char(UART0, buf[i]);
+		  charprob=1;
+	  }else{
+		  charprob=0;
+	  }
 
   }
 }
