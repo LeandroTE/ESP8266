@@ -6,7 +6,7 @@
 #include <espconn.h>
 
 #define MAX_CONN 5
-#define SERVER_TIMEOUT 5
+#define SERVER_TIMEOUT 0
 
 //Max send buffer len
 #define MAX_TXBUFFER 1024
@@ -20,7 +20,8 @@ struct serverConnData {
  		bool readytosend; //true, if txbuffer can send by espconn_sent
 };
 
-void ICACHE_FLASH_ATTR serverInit(int port);
+void ICACHE_FLASH_ATTR serverInit_telnet();
+void ICACHE_FLASH_ATTR serverInit_http();
 sint8  ICACHE_FLASH_ATTR espbuffsent(serverConnData *conn, const char *data, uint16 len);
 sint8  ICACHE_FLASH_ATTR espbuffsentstring(serverConnData *conn, const char *data);
 sint8  ICACHE_FLASH_ATTR espbuffsentprintf(serverConnData *conn, const char *format, ...);

@@ -8,20 +8,26 @@
 #include "server.h"
 #include "config.h"
 
-static struct espconn serverConn;
-static esp_tcp serverTcp;
+#define print_debug
+
+static struct espconn serverConn_telnet;
+static esp_tcp serverTcp_telnet;
+
+static struct espconn serverConn_http;
+static esp_tcp serverTcp_http;
 
 //Connection pool
 static char txbuffer[MAX_CONN][MAX_TXBUFFER];
-serverConnData connData[MAX_CONN];
+serverConnData connData_telnet[MAX_CONN];
+serverConnData connData_http[MAX_CONN];
 
-
+const char html_page[] = "<!DOCTYPE html>\n<html>\n<body>\n\n<form>\n  Nome Rede Wifi:<br>\n  <input type=\"text\" name=\"SSID\">\n  <br>\n  Senha:<br>\n  <input type=\"text\" name=\"senha\"><br><br>\n  <input type=\"submit\">\n</form>\n</body>\n</html>";
 
 static serverConnData ICACHE_FLASH_ATTR *serverFindConnData(void *arg) {
 	int i;
 	for (i=0; i<MAX_CONN; i++) {
-		if (connData[i].conn==(struct espconn *)arg) 
-			return &connData[i];
+		if (connData_telnet[i].conn==(struct espconn *)arg)
+			return &connData_telnet[i];
 	}
 	//ets_uart_printf("FindConnData: Huh? Couldn't find connection for %p\n", arg);
 	return NULL; //WtF?
@@ -44,23 +50,6 @@ static sint8  ICACHE_FLASH_ATTR sendtxbuffer(serverConnData *conn) {
 }
 
 
-//send formatted output to transmit buffer and call sendtxbuffer, if ready (previous espconn_sent is completed)
-sint8 ICACHE_FLASH_ATTR  espbuffsentprintf(serverConnData *conn, const char *format, ...) {
-	uint16 len;
-	va_list al;
-	va_start(al, format);
-	len = ets_vsnprintf(conn->txbuffer + conn->txbufferlen, MAX_TXBUFFER - conn->txbufferlen - 1, format, al);
-	va_end(al);
-	if (len <0)  {
-		ets_uart_printf("espbuffsentprintf: txbuffer full on conn %p\n", conn);
-		return len;
-	}
-	conn->txbufferlen += len;
-	if (conn->readytosend)
-		return sendtxbuffer(conn);
-	return ESPCONN_OK;
-}
-
 
 //send string through espbuffsent
 sint8 ICACHE_FLASH_ATTR espbuffsentstring(serverConnData *conn, const char *data) {
@@ -73,7 +62,9 @@ sint8 ICACHE_FLASH_ATTR espbuffsentstring(serverConnData *conn, const char *data
 //Returns ESPCONN_OK (0) for success, -128 if buffer is full or error from  espconn_sent
 sint8 ICACHE_FLASH_ATTR espbuffsent(serverConnData *conn, const char *data, uint16 len) {
 	if (conn->txbufferlen + len > MAX_TXBUFFER) {
+#ifdef print_debug
 		ets_uart_printf("espbuffsent: txbuffer full on conn %p\n", conn);
+#endif
 		return -128;
 	}
 	os_memcpy(conn->txbuffer + conn->txbufferlen, data, len);
@@ -83,84 +74,176 @@ sint8 ICACHE_FLASH_ATTR espbuffsent(serverConnData *conn, const char *data, uint
 	return ESPCONN_OK;
 }
 
+
+//------------------Callback Telnet---------------------------------------------------
 //callback after the data are sent
-static void ICACHE_FLASH_ATTR serverSentCb(void *arg) {
+static void ICACHE_FLASH_ATTR serverSentCb_telnet(void *arg) {
 	serverConnData *conn = serverFindConnData(arg);
-	ets_uart_printf("Sent callback on conn %p\n", conn);
 	if (conn==NULL) return;
 	conn->readytosend = true;
 	sendtxbuffer(conn); // send possible new data in txbuffer
 }
 
-static void ICACHE_FLASH_ATTR serverRecvCb(void *arg, char *data, unsigned short len) {
+static void ICACHE_FLASH_ATTR serverRecvCb_telnet(void *arg, char *data, unsigned short len) {
 	int x;
 	char *p, *e;
 	serverConnData *conn = serverFindConnData(arg);
-	ets_uart_printf("Receive callback on conn %p\n", conn);
 	if (conn == NULL) return;
 
-
-#ifdef CONFIG_DYNAMIC
-	if (len >= 5 && data[0] == '+' && data[1] == '+' && data[2] == '+' && data[3] =='A' && data[4] == 'T') {
-		config_parse(conn, data, len);
-	} else
-#endif
-		uart0_tx_buffer(data, len);
+	uart0_tx_buffer(data, len);
 }
 
-static void ICACHE_FLASH_ATTR serverReconCb(void *arg, sint8 err) {
+static void ICACHE_FLASH_ATTR serverReconCb_telnet(void *arg, sint8 err) {
 	serverConnData *conn=serverFindConnData(arg);
 	if (conn==NULL) return;
 	//Yeah... No idea what to do here. ToDo: figure something out.
 }
 
-static void ICACHE_FLASH_ATTR serverDisconCb(void *arg) {
+static void ICACHE_FLASH_ATTR serverDisconCb_telnet(void *arg) {
 	//Just look at all the sockets and kill the slot if needed.
 	int i;
-	ets_uart_printf("Disconnectado TCP");
+#ifdef print_debug
+	ets_uart_printf("Telnet:Disconnectado TCP\n");
+#endif
 	for (i=0; i<MAX_CONN; i++) {
-		if (connData[i].conn!=NULL) {
-			if (connData[i].conn->state==ESPCONN_NONE || connData[i].conn->state==ESPCONN_CLOSE) {
-				connData[i].conn=NULL;
+		if (connData_telnet[i].conn!=NULL) {
+			if (connData_telnet[i].conn->state==ESPCONN_NONE || connData_telnet[i].conn->state==ESPCONN_CLOSE) {
+				connData_telnet[i].conn=NULL;
 			}
 		}
 	}
 }
 
-static void ICACHE_FLASH_ATTR serverConnectCb(void *arg) {
+static void ICACHE_FLASH_ATTR serverConnectCb_telnet(void *arg) {
 	struct espconn *conn = arg;
 	int i;
-	ets_uart_printf("Connectado TCP");
-	for (i=0; i<MAX_CONN; i++) if (connData[i].conn==NULL) break;
+#ifdef print_debug
+	ets_uart_printf("Telnet: Connectado TCP\n");
+#endif
+	for (i=0; i<MAX_CONN; i++) if (connData_telnet[i].conn==NULL) break;
 
 	if (i==MAX_CONN) {
 		espconn_disconnect(conn);
 		return;
 	}
-	connData[i].conn=conn;
-	connData[i].txbufferlen = 0;
-	connData[i].readytosend = true;
+	connData_telnet[i].conn=conn;
+	connData_telnet[i].txbufferlen = 0;
+	connData_telnet[i].readytosend = true;
 
-	espconn_regist_recvcb(conn, serverRecvCb);
-	espconn_regist_reconcb(conn, serverReconCb);
-	espconn_regist_disconcb(conn, serverDisconCb);
-	espconn_regist_sentcb(conn, serverSentCb);
+	espconn_regist_recvcb(conn, serverRecvCb_telnet);
+	espconn_regist_reconcb(conn, serverReconCb_telnet);
+	espconn_regist_disconcb(conn, serverDisconCb_telnet);
+	espconn_regist_sentcb(conn, serverSentCb_telnet);
+}
+//------------------Callback HTTP---------------------------------------------------
+static void ICACHE_FLASH_ATTR serverSentCb_http(void *arg) {
+	serverConnData *conn = serverFindConnData(arg);
+#ifdef print_debug
+	ets_uart_printf("Http: Sent Data\n");
+#endif
+	if (conn==NULL) return;
+	conn->readytosend = true;
+	sendtxbuffer(conn); // send possible new data in txbuffer
 }
 
-void ICACHE_FLASH_ATTR serverInit(int port) {
-	int i;
-	for (i = 0; i < MAX_CONN; i++) {
-		connData[i].conn = NULL;
-		connData[i].txbuffer = txbuffer[i];
-		connData[i].txbufferlen = 0;
-		connData[i].readytosend = true;
-	}
-	serverConn.type=ESPCONN_TCP;
-	serverConn.state=ESPCONN_NONE;
-	serverTcp.local_port=port;
-	serverConn.proto.tcp=&serverTcp;
+static void ICACHE_FLASH_ATTR serverRecvCb_http(void *arg, char *data, unsigned short len) {
+	uint8_t i;
+#ifdef print_debug
+	ets_uart_printf("Http: Receive data\n");
+#endif
+	for (i = 0; i < MAX_CONN; ++i)if (connData_http[i].conn)
+	espbuffsentstring(&connData_http[i],html_page);
 
-	espconn_regist_connectcb(&serverConn, serverConnectCb);
-	espconn_accept(&serverConn);
-	espconn_regist_time(&serverConn, SERVER_TIMEOUT, 0);
+	uart0_tx_buffer(html_page, sizeof(html_page));
+}
+
+static void ICACHE_FLASH_ATTR serverReconCb_http(void *arg, sint8 err) {
+	serverConnData *conn=serverFindConnData(arg);
+
+#ifdef print_debug
+	ets_uart_printf("Http: serverReconCb_http\n");
+#endif
+	if (conn==NULL) return;
+	//Yeah... No idea what to do here. ToDo: figure something out.
+}
+
+static void ICACHE_FLASH_ATTR serverDisconCb_http(void *arg) {
+	//Just look at all the sockets and kill the slot if needed.
+	int i;
+#ifdef print_debug
+	ets_uart_printf("Http: Disconnectado TCP\n");
+#endif
+	for (i=0; i<MAX_CONN; i++) {
+		if (connData_telnet[i].conn!=NULL) {
+			if (connData_http[i].conn->state==ESPCONN_NONE || connData_http[i].conn->state==ESPCONN_CLOSE) {
+				connData_http[i].conn=NULL;
+			}
+		}
+	}
+}
+
+static void ICACHE_FLASH_ATTR serverConnectCb_http(void *arg) {
+	struct espconn *conn = arg;
+	int i;
+#ifdef print_debug
+	ets_uart_printf("Http: Connectado TCP\n");
+#endif
+	for (i=0; i<MAX_CONN; i++) if (connData_http[i].conn==NULL) break;
+
+	if (i==MAX_CONN) {
+		espconn_disconnect(conn);
+		return;
+	}
+	connData_http[i].conn=conn;
+	connData_http[i].txbufferlen = 0;
+	connData_http[i].readytosend = true;
+
+	espconn_regist_recvcb(conn, serverRecvCb_http);
+	espconn_regist_reconcb(conn, serverReconCb_http);
+	espconn_regist_disconcb(conn, serverDisconCb_http);
+	espconn_regist_sentcb(conn, serverSentCb_http);
+}
+
+
+//-------------------servers initialization-----------------------------------------
+void ICACHE_FLASH_ATTR serverInit_telnet() {
+	int i;
+#ifdef print_debug
+	ets_uart_printf("Telnet: ServerInit\n");
+#endif
+	for (i = 0; i < MAX_CONN; i++) {
+		connData_telnet[i].conn = NULL;
+		connData_telnet[i].txbuffer = txbuffer[i];
+		connData_telnet[i].txbufferlen = 0;
+		connData_telnet[i].readytosend = true;
+	}
+	serverConn_telnet.type=ESPCONN_TCP;
+	serverConn_telnet.state=ESPCONN_NONE;
+	serverTcp_telnet.local_port=23;
+	serverConn_telnet.proto.tcp=&serverTcp_telnet;
+
+	espconn_regist_connectcb(&serverConn_telnet, serverConnectCb_telnet);
+	espconn_accept(&serverConn_telnet);
+	espconn_regist_time(&serverConn_telnet, SERVER_TIMEOUT, 0);
+}
+
+void ICACHE_FLASH_ATTR serverInit_http() {
+	int i;
+#ifdef print_debug
+	ets_uart_printf("Http: ServerInit\n");
+#endif
+	for (i = 0; i < MAX_CONN; i++) {
+		connData_http[i].conn = NULL;
+		connData_http[i].txbuffer = txbuffer[i];
+		connData_http[i].txbufferlen = 0;
+		connData_http[i].readytosend = true;
+	}
+	serverConn_http.type=ESPCONN_TCP;
+	serverConn_http.state=ESPCONN_NONE;
+	serverTcp_http.local_port=80;
+	serverConn_http.proto.tcp=&serverTcp_http;
+
+	espconn_regist_connectcb(&serverConn_http, serverConnectCb_http);
+	espconn_accept(&serverConn_http);
+	espconn_regist_time(&serverConn_http, SERVER_TIMEOUT + 15, 0);
 }
