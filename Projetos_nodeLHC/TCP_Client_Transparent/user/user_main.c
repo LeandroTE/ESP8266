@@ -20,21 +20,23 @@
 #include "os_type.h"
 #include "osapi.h"
 #include "driver/uart.h"
+#include "espconn.h"
 #include "../include/task.h"
 
 #include "server.h"
 #include "config.h"
+#include "flash_param.h"
 #include "../include/driver/i2c_sd1306.h"
 #include "driver/i2c.h"
 
-#define WIFI_CLIENTSSID		"LHC"
-#define WIFI_CLIENTPASSWORD	"tijolo22"
+#define WIFI_CLIENTSSID		"God Save The Queen"
+#define WIFI_CLIENTPASSWORD	"@cessorestrito"
 
 #define WIFI_CLIENTSSID_AP		"Medidor TE"
 #define WIFI_CLIENTPASSWORD_AP	"@cessorestrito!"
 
 os_event_t		recvTaskQueue[recvTaskQueueLen];
-extern  serverConnData connData_telnet[MAX_CONN];
+extern  serverConnData connData[MAX_CONN];
 struct rst_info * reset_info;
 
 
@@ -91,7 +93,7 @@ LOCAL void ICACHE_FLASH_ATTR setup_wifi_st_mode(void)
 		os_memcpy(&stconfig.password, WIFI_CLIENTPASSWORD, sizeof(WIFI_CLIENTPASSWORD));
 		wifi_station_set_config(&stconfig);
 		ets_uart_printf("SSID: %s\n",stconfig.ssid);
-		stringDraw(6, 1, (char*)stconfig.ssid);
+		stringDraw(2, 1, (char*)stconfig.ssid);
 	}
 	wifi_station_connect();
 	wifi_station_dhcpc_start();
@@ -114,7 +116,7 @@ LOCAL void ICACHE_FLASH_ATTR setup_wifi_ap_mode(void)
 		wifi_softap_set_config(&apconfig);
 		ets_uart_printf("SSID: %s\n",apconfig.ssid);
 
-		stringDraw(6, 1, (char*)apconfig.ssid);
+		stringDraw(2, 1, (char*)apconfig.ssid);
 		ets_uart_printf("Password: %s\n",apconfig.password);
 
 	}
@@ -141,7 +143,8 @@ void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
 			wifi_get_ip_info(STATION_IF, &ipConfig);
 			if(ipConfig.ip.addr != 0 && connState !=WIFI_CONNECTED) {
 				connState = WIFI_CONNECTED;
-				ets_uart_printf("%d.%d.%d.%d\n",p[0],p[1],p[2],p[3]);
+				ets_uart_printf("%d.%d.%d.%d",p[0],p[1],p[2],p[3]);
+				uart0_sendStr("\r");
 				itoa(p[0],IP_temp);
 				IP[0]=IP_temp[0];
 				IP[1]=IP_temp[1];
@@ -161,8 +164,9 @@ void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
 				IP[12]=IP_temp[2];
 				IP[13]=0;
 				IP[14]=0;
-				stringDraw(7, 1, "IP:");
-				stringDraw(7, 18, IP);
+				stringDraw(3, 1, "IP:");
+				stringDraw(3, 18, IP);
+				serverInit(23);
 			}
 			break;
 		case STATION_WRONG_PASSWORD:
@@ -182,10 +186,13 @@ void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
 		default:
 			connState = WIFI_CONNECTING;
 			ets_uart_printf("WiFi connecting...\n");
-			stringDraw(7, 1, "WiFi connecting");
+			stringDraw(3, 1, "WiFi connecting");
 		}
-		os_timer_setfn(&WiFiLinker, (os_timer_func_t *)wifi_check_ip, NULL);
-		os_timer_arm(&WiFiLinker, 2000, 0);
+		if(wifi_station_get_connect_status()!=STATION_GOT_IP){
+			os_timer_setfn(&WiFiLinker, (os_timer_func_t *)wifi_check_ip, NULL);
+			os_timer_arm(&WiFiLinker, 2000, 0);
+		}
+
 	}else{
 		ets_uart_printf("Conectar na rede SSID: %s\n",WIFI_CLIENTSSID_AP);
 	}
@@ -195,7 +202,6 @@ void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
 static void ICACHE_FLASH_ATTR recvTask(os_event_t *events)
 {
 	uint8_t i;
-
 	while (READ_PERI_REG(UART_STATUS(UART0)) & (UART_RXFIFO_CNT << UART_RXFIFO_CNT_S))
 	{
 		WRITE_PERI_REG(0X60000914, 0x73); //WTD
@@ -203,8 +209,8 @@ static void ICACHE_FLASH_ATTR recvTask(os_event_t *events)
 		while ((READ_PERI_REG(UART_STATUS(UART0)) & (UART_RXFIFO_CNT << UART_RXFIFO_CNT_S)) && (length<MAX_UARTBUFFER))
 			uartbuffer[length++] = READ_PERI_REG(UART_FIFO(UART0)) & 0xFF;
 		for (i = 0; i < MAX_CONN; ++i)
-			if (connData_telnet[i].conn)
-				espbuffsent(&connData_telnet[i], uartbuffer, length);
+			if (connData[i].conn) 
+				espbuffsent(&connData[i], uartbuffer, length);		
 	}
 
 	if(UART_RXFIFO_FULL_INT_ST == (READ_PERI_REG(UART_INT_ST(UART0)) & UART_RXFIFO_FULL_INT_ST))
@@ -242,8 +248,8 @@ void user_init(void)
 	i2c_init();
 	SSD1306Init();
 	clearScreen();
-	stringDraw(5, 1, "SDK ver:");
-	stringDraw(5, 48, (char*)system_get_sdk_version());
+	stringDraw(1, 1, "SDK ver:");
+	stringDraw(1, 48, (char*)system_get_sdk_version());
 
 
 	ets_uart_printf("reset reason: %d\n", reset_info->reason);
@@ -269,11 +275,10 @@ void user_init(void)
 #else
 
 #endif
+	ets_uart_printf("size flash_param_t %d\n", sizeof(flash_param_t));
 
 
 
-	serverInit_telnet();
-	serverInit_http();
 
 #ifdef CONFIG_GPIO
 	config_gpio();

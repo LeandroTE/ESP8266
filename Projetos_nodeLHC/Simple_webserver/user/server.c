@@ -21,16 +21,27 @@ static char txbuffer[MAX_CONN][MAX_TXBUFFER];
 serverConnData connData_telnet[MAX_CONN];
 serverConnData connData_http[MAX_CONN];
 
-const char html_page[] = "<!DOCTYPE html>\n<html>\n<body>\n\n<form>\n  Nome Rede Wifi:<br>\n  <input type=\"text\" name=\"SSID\">\n  <br>\n  Senha:<br>\n  <input type=\"text\" name=\"senha\"><br><br>\n  <input type=\"submit\">\n</form>\n</body>\n</html>";
 
-static serverConnData ICACHE_FLASH_ATTR *serverFindConnData(void *arg) {
+const char html_page[] = "HTTP/1.0 200 OK\r\n\r\n<!DOCTYPE html>\r\n<html>\r\n<body>\r\n<form>\r\n  Nome Rede Wifi:<br>\r\n  <input type=\"text\" name=\"SSID\">\r\n  <br>\r\n  Senha:<br>\r\n  <input type=\"text\" name=\"senha\"><br><br>\r\n  <input type=\"submit\">\r\n</form>\r\n</body>\r\n</html>\r\n";
+
+static serverConnData ICACHE_FLASH_ATTR *serverFindConnData_telnet(void *arg) {
 	int i;
 	for (i=0; i<MAX_CONN; i++) {
 		if (connData_telnet[i].conn==(struct espconn *)arg)
 			return &connData_telnet[i];
 	}
-	//ets_uart_printf("FindConnData: Huh? Couldn't find connection for %p\n", arg);
+	ets_uart_printf("FindConnData_telnet");
 	return NULL; //WtF?
+}
+
+static serverConnData ICACHE_FLASH_ATTR *serverFindConnData_http(void *arg) {
+	int i;
+	for (i=0; i<MAX_CONN; i++) {
+		if (connData_http[i].conn==(struct espconn *)arg)
+			return &connData_http[i];
+	}
+	ets_uart_printf("FindConnData_http");
+	return NULL;
 }
 
 
@@ -78,7 +89,7 @@ sint8 ICACHE_FLASH_ATTR espbuffsent(serverConnData *conn, const char *data, uint
 //------------------Callback Telnet---------------------------------------------------
 //callback after the data are sent
 static void ICACHE_FLASH_ATTR serverSentCb_telnet(void *arg) {
-	serverConnData *conn = serverFindConnData(arg);
+	serverConnData *conn = serverFindConnData_telnet(arg);
 	if (conn==NULL) return;
 	conn->readytosend = true;
 	sendtxbuffer(conn); // send possible new data in txbuffer
@@ -87,14 +98,14 @@ static void ICACHE_FLASH_ATTR serverSentCb_telnet(void *arg) {
 static void ICACHE_FLASH_ATTR serverRecvCb_telnet(void *arg, char *data, unsigned short len) {
 	int x;
 	char *p, *e;
-	serverConnData *conn = serverFindConnData(arg);
+	serverConnData *conn = serverFindConnData_telnet(arg);
 	if (conn == NULL) return;
 
 	uart0_tx_buffer(data, len);
 }
 
 static void ICACHE_FLASH_ATTR serverReconCb_telnet(void *arg, sint8 err) {
-	serverConnData *conn=serverFindConnData(arg);
+	serverConnData *conn=serverFindConnData_telnet(arg);
 	if (conn==NULL) return;
 	//Yeah... No idea what to do here. ToDo: figure something out.
 }
@@ -137,7 +148,7 @@ static void ICACHE_FLASH_ATTR serverConnectCb_telnet(void *arg) {
 }
 //------------------Callback HTTP---------------------------------------------------
 static void ICACHE_FLASH_ATTR serverSentCb_http(void *arg) {
-	serverConnData *conn = serverFindConnData(arg);
+	serverConnData *conn = serverFindConnData_http(arg);
 #ifdef print_debug
 	ets_uart_printf("Http: Sent Data\n");
 #endif
@@ -158,7 +169,7 @@ static void ICACHE_FLASH_ATTR serverRecvCb_http(void *arg, char *data, unsigned 
 }
 
 static void ICACHE_FLASH_ATTR serverReconCb_http(void *arg, sint8 err) {
-	serverConnData *conn=serverFindConnData(arg);
+	serverConnData *conn=serverFindConnData_http(arg);
 
 #ifdef print_debug
 	ets_uart_printf("Http: serverReconCb_http\n");
@@ -174,7 +185,7 @@ static void ICACHE_FLASH_ATTR serverDisconCb_http(void *arg) {
 	ets_uart_printf("Http: Disconnectado TCP\n");
 #endif
 	for (i=0; i<MAX_CONN; i++) {
-		if (connData_telnet[i].conn!=NULL) {
+		if (connData_http[i].conn!=NULL) {
 			if (connData_http[i].conn->state==ESPCONN_NONE || connData_http[i].conn->state==ESPCONN_CLOSE) {
 				connData_http[i].conn=NULL;
 			}
