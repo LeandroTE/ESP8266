@@ -12,12 +12,6 @@ FW_BASE		= firmware
 # Base directory for the compiler
 XTENSA_TOOLS_ROOT ?= c:/Espressif/xtensa-lx106-elf/bin
 
-#Position and maximum length of espfs in flash memory. This can be undefined. In this case 
-#the webpages will be linked in into the executable file. If this is defined, please do a 
-#'make htmlflash' to flash the espfs into the ESPs memory.
-ESPFS_POS = 0x12000
-ESPFS_SIZE = 0x2E000
-
 # base directory of the ESP8266 SDK package, absolute
 SDK_BASE	?= c:/Espressif/ESP8266_SDK
 
@@ -153,8 +147,6 @@ TARGET		= app
 # which modules (subdirectories) of the project to include in compiling
 MODULES		= driver user
 EXTRA_INCDIR    = include $(SDK_BASE)/../include
-
-
 
 # libraries used in this project, mainly provided by the SDK
 LIBS		= c gcc hal phy pp net80211 lwip wpa main
@@ -327,11 +319,6 @@ else
 endif
 endif
 
-htmlflash: libesphttpd
-	$(Q) if [ $$(stat -c '%s' libesphttpd/webpages.espfs) -gt $$(( $(ESPFS_SIZE) )) ]; then echo "webpages.espfs too big!"; false; fi
-	$(Q) $(ESPTOOL) --port $(ESPPORT) --baud $(ESPBAUD) write_flash $(ESPFS_POS) libesphttpd/webpages.espfs
-
-
 flashinit:
 	$(vecho) "Flash init data:"
 	$(vecho) "Clear old settings (EEP area):"
@@ -349,6 +336,5 @@ clean:
 	$(Q) rm -rf $(BUILD_DIR)
 	$(Q) rm -rf $(BUILD_BASE)
 	$(Q) rm -rf $(FW_BASE)
-
 
 $(foreach bdir,$(BUILD_DIR),$(eval $(call compile-objects,$(bdir))))

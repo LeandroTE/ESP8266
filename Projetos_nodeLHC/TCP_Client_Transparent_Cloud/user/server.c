@@ -1,5 +1,6 @@
 #include "espmissingincludes.h"
 #include "c_types.h"
+
 #include "user_interface.h"
 #include "espconn.h"
 #include "mem.h"
@@ -11,11 +12,25 @@
 struct espconn serverConn;
 static esp_tcp serverTcp;
 
+#define Debug
+
 //Connection pool
 static char txbuffer[MAX_CONN][MAX_TXBUFFER];
 serverConnData connData[MAX_CONN];
+static ETSTimer timer_1;
 
 
+static void ICACHE_FLASH_ATTR timer_server(void *arg)
+{
+	static uint8_t state;
+	os_timer_disarm(&timer_1);
+#ifdef Debug
+	ets_uart_printf("Tentando reconectar\n");
+#endif
+	if(!network_start()){
+		return;
+	}
+}
 
 static serverConnData ICACHE_FLASH_ATTR *serverFindConnData(void *arg) {
 	int i;
@@ -37,8 +52,7 @@ static sint8  ICACHE_FLASH_ATTR sendtxbuffer(serverConnData *conn) {
 		conn->readytosend = false;
 		result= espconn_sent(conn->conn, (uint8_t*)conn->txbuffer, conn->txbufferlen);
 		conn->txbufferlen = 0;	
-		//if (result != ESPCONN_OK)
-			//ets_uart_printf("sendtxbuffer: espconn_sent error %d on conn %p\n", result, conn);
+
 	}
 	return result;
 }
@@ -52,7 +66,6 @@ sint8 ICACHE_FLASH_ATTR  espbuffsentprintf(serverConnData *conn, const char *for
 	len = ets_vsnprintf(conn->txbuffer + conn->txbufferlen, MAX_TXBUFFER - conn->txbufferlen - 1, format, al);
 	va_end(al);
 	if (len <0)  {
-		//ets_uart_printf("espbuffsentprintf: txbuffer full on conn %p\n", conn);
 		return len;
 	}
 	conn->txbufferlen += len;
@@ -100,17 +113,14 @@ static void ICACHE_FLASH_ATTR serverRecvCb(void *arg, char *data, unsigned short
 	if (conn == NULL) return;
 
 
-#ifdef CONFIG_DYNAMIC
-	if (len >= 5 && data[0] == '+' && data[1] == '+' && data[2] == '+' && data[3] =='A' && data[4] == 'T') {
-		config_parse(conn, data, len);
-	} else
-#endif
-		uart0_tx_buffer(data, len);
+	uart0_tx_buffer(data, len);
 }
 
 static void ICACHE_FLASH_ATTR serverReconCb(void *arg, sint8 err) {
 	serverConnData *conn=serverFindConnData(arg);
+#ifdef Debug
 	ets_uart_printf("ReconCb\n");
+#endif
 	if (conn==NULL) return;
 	//Yeah... No idea what to do here. ToDo: figure something out.
 }
@@ -118,7 +128,10 @@ static void ICACHE_FLASH_ATTR serverReconCb(void *arg, sint8 err) {
 static void ICACHE_FLASH_ATTR serverDisconCb(void *arg) {
 	//Just look at all the sockets and kill the slot if needed.
 	int i;
+	static int counter;
+#ifdef Debug
 	ets_uart_printf("Desconectado\n");
+#endif
 	for (i=0; i<MAX_CONN; i++) {
 		if (connData[i].conn!=NULL) {
 			if (connData[i].conn->state==ESPCONN_NONE || connData[i].conn->state==ESPCONN_CLOSE) {
@@ -126,54 +139,76 @@ static void ICACHE_FLASH_ATTR serverDisconCb(void *arg) {
 			}
 		}
 	}
+
+		os_timer_setfn(&timer_1, (os_timer_func_t *)timer_server, NULL);
+		os_timer_arm(&timer_1, 5000, 0);
+
 }
 
 static void ICACHE_FLASH_ATTR serverConnectCb(void *arg) {
 	struct espconn *conn = arg;
 	int i;
 	//Find empty conndata in pool
-	for (i=0; i<MAX_CONN; i++) if (connData[i].conn==NULL) break;
+#ifdef Debug
 	ets_uart_printf("Conectado\n");
+#endif
+	for (i=0; i<MAX_CONN; i++) if (connData[i].conn==NULL) break;
+	//ets_uart_printf("Con req, conn=%p, pool slot %d\n", conn, i);
 
 	if (i==MAX_CONN) {
 		//ets_uart_printf("Aiee, conn pool overflow!\n");
 		espconn_disconnect(conn);
 		return;
 	}
+
 	connData[i].conn=conn;
 	connData[i].txbufferlen = 0;
 	connData[i].readytosend = true;
 
-	espconn_regist_recvcb(conn, serverRecvCb);
-	espconn_regist_sentcb(&serverConn, serverSentCb);
+	espconn_regist_sentcb(conn, serverSentCb);
+
 }
 
-void ICACHE_FLASH_ATTR serverInit(int port) {
-	int i;
+void ICACHE_FLASH_ATTR serverInit(const char *name, ip_addr_t *ip, void *arg) {
 	int result;
+	int i;
+	static esp_tcp tcp;
+	if (ip==NULL) {
+#ifdef Debug
+		ets_uart_printf("Nslookup failed :/ Trying again...\n");
+#endif
+		//network_start();
+	}
+
 	for (i = 0; i < MAX_CONN; i++) {
 		connData[i].conn = NULL;
 		connData[i].txbuffer = txbuffer[i];
 		connData[i].txbufferlen = 0;
 		connData[i].readytosend = true;
 	}
+
 	serverConn.type=ESPCONN_TCP;
 	serverConn.state=ESPCONN_NONE;
-	serverTcp.local_port=espconn_port();
-	serverTcp.remote_port=8080;
 	serverConn.proto.tcp=&serverTcp;
-	serverConn.proto.tcp->remote_ip[0]=192; // Your computer IP
-	serverConn.proto.tcp->remote_ip[1]=168; // Your computer IP
-	serverConn.proto.tcp->remote_ip[2]=0; // Your computer IP
-	serverConn.proto.tcp->remote_ip[3]=102; // Your computer IP
-
-	ets_uart_printf("Inicializando conexao TCP\n");
-
+	serverConn.proto.tcp->local_port=espconn_port();
+	serverConn.proto.tcp->remote_port=8080;
+	os_memcpy(serverConn.proto.tcp->remote_ip, &ip->addr, 4);
 	espconn_regist_connectcb(&serverConn, serverConnectCb);
-	//espconn_regist_recvcb(&serverConn, serverRecvCb);
+	espconn_regist_recvcb(&serverConn, serverRecvCb);
 	espconn_regist_reconcb(&serverConn, serverReconCb);
 	espconn_regist_disconcb(&serverConn, serverDisconCb);
 	result = espconn_connect(&serverConn); // Start connection
-
+#ifdef Debug
 	ets_uart_printf("Resultado da tentativa de conexa: %d\n",result);
+#endif
+}
+
+sint8 ICACHE_FLASH_ATTR network_start() {
+	static ip_addr_t ip;
+	sint8 result;
+#ifdef Debug
+	ets_uart_printf("Looking up server...\n");
+#endif
+	result = espconn_gethostbyname(&serverConn, "www.asgard.timeenergy.com.br", &ip, serverInit);
+	return result;
 }

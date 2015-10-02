@@ -80,6 +80,7 @@ sint8 ICACHE_FLASH_ATTR espbuffsent(serverConnData *conn, const char *data, uint
 	}
 	os_memcpy(conn->txbuffer + conn->txbufferlen, data, len);
 	conn->txbufferlen += len;
+
 	if (conn->readytosend) 
 		return sendtxbuffer(conn);
 	return ESPCONN_OK;
@@ -152,6 +153,7 @@ static void ICACHE_FLASH_ATTR serverSentCb_http(void *arg) {
 #ifdef print_debug
 	ets_uart_printf("Http: Sent Data\n");
 #endif
+	espconn_disconnect(&serverConn_http);
 	if (conn==NULL) return;
 	conn->readytosend = true;
 	sendtxbuffer(conn); // send possible new data in txbuffer
@@ -159,11 +161,20 @@ static void ICACHE_FLASH_ATTR serverSentCb_http(void *arg) {
 
 static void ICACHE_FLASH_ATTR serverRecvCb_http(void *arg, char *data, unsigned short len) {
 	uint8_t i;
+	static int toogle=1;
+
 #ifdef print_debug
 	ets_uart_printf("Http: Receive data\n");
 #endif
 	for (i = 0; i < MAX_CONN; ++i)if (connData_http[i].conn)
+if(toogle==1){
 	espbuffsentstring(&connData_http[i],html_page);
+	toogle=2;
+}else{
+	espbuffsentstring(&connData_http[i],"HTTP/1.1 404 Not Found");
+	ets_uart_printf("404\n");
+	toogle=1;
+}
 
 	uart0_tx_buffer(html_page, sizeof(html_page));
 }

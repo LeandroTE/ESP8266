@@ -28,8 +28,14 @@
 #include "../include/driver/i2c_sd1306.h"
 #include "driver/i2c.h"
 
-#define WIFI_CLIENTSSID		"Time Energy"
-#define WIFI_CLIENTPASSWORD	"@cessorestrito!"
+//#define WIFI_CLIENTSSID		"Time Energy"
+//#define WIFI_CLIENTPASSWORD	"@cessorestrito!"
+//
+//#define WIFI_CLIENTSSID		"God Save The Queen"
+//#define WIFI_CLIENTPASSWORD	"@cessorestrito"
+
+#define WIFI_CLIENTSSID		"LHC"
+#define WIFI_CLIENTPASSWORD	"tijolo22"
 
 #define WIFI_CLIENTSSID_AP		"Medidor TE"
 #define WIFI_CLIENTPASSWORD_AP	"@cessorestrito!"
@@ -64,22 +70,6 @@ static tConnState connState = WIFI_CONNECTING;
 
 unsigned char *p = (unsigned char*)&ipConfig.ip.addr;
 
-//static void ICACHE_FLASH_ATTR timer_1_int(void *arg)
-//{
-//	static uint8_t state;
-//	os_timer_disarm(&timer_1);
-//	char IPadress[16]= "te";
-//	wifi_get_ip_info(0, IPadress);
-//	ets_uart_printf("Timer 1 segundo \n");
-//	ets_uart_printf("%s\n",IPadress);
-//
-//
-//
-//	os_timer_setfn(&timer_1, (os_timer_func_t *)timer_1_int, NULL);
-//	os_timer_arm(&timer_1, 1000, 0);
-//
-//}
-
 LOCAL void ICACHE_FLASH_ATTR setup_wifi_st_mode(void)
 {
 	wifi_set_opmode(STATION_MODE);
@@ -88,16 +78,16 @@ LOCAL void ICACHE_FLASH_ATTR setup_wifi_st_mode(void)
 	wifi_station_dhcpc_stop();
 	if(wifi_station_get_config(&stconfig))
 	{
-//		os_memcpy(&stconfig.ssid, WIFI_CLIENTSSID, sizeof(WIFI_CLIENTSSID));
-//		os_memcpy(&stconfig.password, WIFI_CLIENTPASSWORD, sizeof(WIFI_CLIENTPASSWORD));
+				os_memcpy(&stconfig.ssid, WIFI_CLIENTSSID, sizeof(WIFI_CLIENTSSID));
+				os_memcpy(&stconfig.password, WIFI_CLIENTPASSWORD, sizeof(WIFI_CLIENTPASSWORD));
 		wifi_station_set_config(&stconfig);
-		ets_uart_printf("SSID: %s\n",stconfig.ssid);
-		stringDraw(2, 1, (char*)stconfig.ssid);
+		//ets_uart_printf("SSID: %s\n",stconfig.ssid);
+		stringDraw(5, 1, (char*)stconfig.ssid);
 	}
 	wifi_station_connect();
 	wifi_station_dhcpc_start();
 	wifi_station_set_auto_connect(1);
-	ets_uart_printf("STA mode\n");
+	//ets_uart_printf("STA mode\n");
 
 }
 
@@ -113,10 +103,10 @@ LOCAL void ICACHE_FLASH_ATTR setup_wifi_ap_mode(void)
 		os_memcpy(&apconfig.ssid, WIFI_CLIENTSSID_AP, sizeof(WIFI_CLIENTSSID));
 		os_memcpy(&apconfig.password, WIFI_CLIENTPASSWORD_AP, sizeof(WIFI_CLIENTPASSWORD));
 		wifi_softap_set_config(&apconfig);
-		ets_uart_printf("SSID: %s\n",apconfig.ssid);
+		//ets_uart_printf("SSID: %s\n",apconfig.ssid);
 
-		stringDraw(2, 1, (char*)apconfig.ssid);
-		ets_uart_printf("Password: %s\n",apconfig.password);
+		stringDraw(5, 1, (char*)apconfig.ssid);
+		//ets_uart_printf("Password: %s\n",apconfig.password);
 
 	}
 	wifi_softap_dhcps_start();
@@ -143,7 +133,7 @@ void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
 			if(ipConfig.ip.addr != 0 && connState !=WIFI_CONNECTED) {
 				connState = WIFI_CONNECTED;
 				serverInit(23);
-				ets_uart_printf("%d.%d.%d.%d",p[0],p[1],p[2],p[3]);
+				//ets_uart_printf("%d.%d.%d.%d",p[0],p[1],p[2],p[3]);
 				uart0_sendStr("\r");
 				itoa(p[0],IP_temp);
 				IP[0]=IP_temp[0];
@@ -164,35 +154,34 @@ void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
 				IP[12]=IP_temp[2];
 				IP[13]=0;
 				IP[14]=0;
-				stringDraw(3, 1, "IP:");
-				stringDraw(3, 18, IP);
+				stringDraw(6, 1, "IP:");
+				stringDraw(6, 18, IP);
 			}
 			break;
 		case STATION_WRONG_PASSWORD:
 			connState = WIFI_CONNECTING_ERROR;
-			ets_uart_printf("WiFi connecting error, wrong password\n");
+			//ets_uart_printf("WiFi connecting error, wrong password\n");
 			break;
 		case STATION_NO_AP_FOUND:
 			connState = WIFI_CONNECTING_ERROR;
-			ets_uart_printf("WiFi connecting error, ap not found\n");
+			//ets_uart_printf("WiFi connecting error, ap not found\n");
 			setup_wifi_ap_mode();
 			break;
 		case STATION_CONNECT_FAIL:
 			connState = WIFI_CONNECTING_ERROR;
-			ets_uart_printf("WiFi connecting fail\n");
+			//			ets_uart_printf("WiFi connecting fail\n");
 
 			break;
 		default:
 			connState = WIFI_CONNECTING;
-			ets_uart_printf("WiFi connecting...\n");
-			stringDraw(3, 1, "WiFi connecting");
+			//			ets_uart_printf("WiFi connecting...\n");
+						stringDraw(6, 1, "WiFi connecting");
 		}
 		os_timer_setfn(&WiFiLinker, (os_timer_func_t *)wifi_check_ip, NULL);
 		os_timer_arm(&WiFiLinker, 2000, 0);
 	}else{
-		ets_uart_printf("Conectar na rede SSID: %s\n",WIFI_CLIENTSSID_AP);
+		//		ets_uart_printf("Conectar na rede SSID: %s\n",WIFI_CLIENTSSID_AP);
 	}
-
 }
 
 static void ICACHE_FLASH_ATTR recvTask(os_event_t *events)
@@ -245,13 +234,13 @@ void user_init(void)
 	i2c_init();
 	SSD1306Init();
 	clearScreen();
-	stringDraw(1, 1, "SDK ver:");
-	stringDraw(1, 48, (char*)system_get_sdk_version());
+	stringDraw(4, 1, "SDK ver:");
+	stringDraw(4, 48, (char*)system_get_sdk_version());
 
 
-	ets_uart_printf("reset reason: %d\n", reset_info->reason);
-	ets_uart_printf("Booting...\n");
-	ets_uart_printf("SDK version:%s\n", system_get_sdk_version());
+	//	ets_uart_printf("reset reason: %d\n", reset_info->reason);
+	//	ets_uart_printf("Booting...\n");
+	//	ets_uart_printf("SDK version:%s\n", system_get_sdk_version());
 
 	setup_wifi_st_mode();
 	if(wifi_get_phy_mode() != PHY_MODE_11N)
@@ -272,7 +261,7 @@ void user_init(void)
 #else
 
 #endif
-	ets_uart_printf("size flash_param_t %d\n", sizeof(flash_param_t));
+	//ets_uart_printf("size flash_param_t %d\n", sizeof(flash_param_t));
 
 
 	serverInit(23);
